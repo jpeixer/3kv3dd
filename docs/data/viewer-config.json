@@ -26,6 +26,7 @@
     "rootName": "tower lamp",
     "redNode": "red",
     "greenNode": "green",
-    "blinkMs": 500
+    "blinkMs": 500,
+    "emissiveIntensity": 8.5
   }
 }

@@ -2,6 +2,44 @@ import * as THREE from 'three';
 import { SafetyBuzzer } from './safety-buzzer.js';
 
 const BLINK_MS = 500;
+const LAMP_COLORS = {
+  red: 0xff1a1a,
+  green: 0x00e676,
+  off: 0x141414,
+};
+const LAMP_EMISSIVE_INTENSITY = 8.5;
+
+function prepareLedMaterial(m) {
+  if (!m) return;
+  m.metalness = 0;
+  m.roughness = 1;
+  if ('emissiveIntensity' in m) m.emissiveIntensity = 0;
+  if (m.emissive) m.emissive.setHex(0x000000);
+  if (m.color) m.color.setHex(LAMP_COLORS.off);
+  m.toneMapped = false;
+  m.needsUpdate = true;
+}
+
+function applyLampGlow(mesh, on, hexColor, intensity = LAMP_EMISSIVE_INTENSITY) {
+  if (!mesh?.isMesh) return;
+  const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+  mats.forEach((m) => {
+    if (!m) return;
+    m.metalness = 0;
+    m.roughness = 1;
+    m.toneMapped = false;
+    if (on) {
+      if (m.color) m.color.setHex(hexColor);
+      if (m.emissive) m.emissive.setHex(hexColor);
+      if ('emissiveIntensity' in m) m.emissiveIntensity = intensity;
+    } else {
+      if (m.color) m.color.setHex(LAMP_COLORS.off);
+      if (m.emissive) m.emissive.setHex(0x000000);
+      if ('emissiveIntensity' in m) m.emissiveIntensity = 0;
+    }
+    m.needsUpdate = true;
+  });
+}
 
 function isolateMaterials(mesh) {
   if (!mesh?.isMesh) return;
@@ -10,22 +48,6 @@ function isolateMaterials(mesh) {
   } else if (mesh.material) {
     mesh.material = mesh.material.clone();
   }
-}
-
-function applyLampGlow(mesh, on, hexColor, intensity = 2.2) {
-  if (!mesh?.isMesh) return;
-  const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-  mats.forEach((m) => {
-    if (!m) return;
-    if (!m.emissive) return;
-    if (on) {
-      m.emissive.setHex(hexColor);
-      m.emissiveIntensity = intensity;
-    } else {
-      m.emissive.setHex(0x000000);
-      m.emissiveIntensity = 0;
-    }
-  });
 }
 
 function findTowerLampMeshes(model, config) {
@@ -64,6 +86,7 @@ function findTowerLampMeshes(model, config) {
 export class TowerLampController {
   constructor(model, config) {
     this.config = config;
+    this.lampIntensity = config?.towerLamp?.emissiveIntensity ?? LAMP_EMISSIVE_INTENSITY;
     this.operational = false;
     this.buzzer = new SafetyBuzzer();
     this.rafId = 0;
@@ -72,8 +95,14 @@ export class TowerLampController {
     this.red = red;
     this.green = green;
 
-    if (red) isolateMaterials(red);
-    if (green) isolateMaterials(green);
+    if (red) {
+      isolateMaterials(red);
+      (Array.isArray(red.material) ? red.material : [red.material]).forEach(prepareLedMaterial);
+    }
+    if (green) {
+      isolateMaterials(green);
+      (Array.isArray(green.material) ? green.material : [green.material]).forEach(prepareLedMaterial);
+    }
 
     if (!red || !green) {
       console.warn('[tower-lamp] Meshes red/green nao encontrados em "tower lamp".');
@@ -100,13 +129,13 @@ export class TowerLampController {
   }
 
   setIdle() {
-    applyLampGlow(this.red, false, 0xff0000);
-    applyLampGlow(this.green, true, 0x22cc44);
+    applyLampGlow(this.red, false, LAMP_COLORS.red, this.lampIntensity);
+    applyLampGlow(this.green, true, LAMP_COLORS.green, this.lampIntensity);
   }
 
   setEnergizedPhase(on) {
-    applyLampGlow(this.red, on, 0xff2222);
-    applyLampGlow(this.green, false, 0x22cc44);
+    applyLampGlow(this.red, on, LAMP_COLORS.red, this.lampIntensity);
+    applyLampGlow(this.green, false, LAMP_COLORS.green, this.lampIntensity);
   }
 
   startBlinkLoop() {
