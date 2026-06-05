@@ -8,7 +8,20 @@ A visualização web interativa está em [`docs/`](docs/):
 
 - **URL:** https://jpeixer.github.io/3kv3dd/
 - Arraste para girar, scroll para zoom, botão direito para mover a câmera.
-- O modelo é exportado da cena `Assets/Scenes/SampleScene.unity` (versão simplificada para web).
+- O modelo é exportado da cena `Assets/Scenes/SampleScene.unity` via **glTFast** (mesmo fluxo do [Rain-machine](https://jpeixer.github.io/Rain-machine/)).
+
+### Publicar / atualizar o site
+
+1. Na Unity: **3kv3dd → Export for Web** (gera `docs/assets/scene.glb` bruto).
+2. No terminal: `.\scripts\optimize-web-glb.ps1` (comprime com Draco + WebP, **sem** simplificar malhas).
+3. Commit e push da pasta `docs/` para o branch `main`.
+4. GitHub Pages publica automaticamente via workflow em `.github/workflows/pages.yml`.
+
+### Testar localmente
+
+```bash
+npx --yes serve docs
+```
 
 ## Elementos na cena
 
@@ -27,6 +40,7 @@ A visualização web interativa está em [`docs/`](docs/):
 
 - Unity **6000.0.41f1** ou compatível
 - Universal Render Pipeline (URP)
+- Pacote **glTFast** (`com.unity.cloud.gltfast`) — já no `Packages/manifest.json`
 
 ## Abrir no Unity
 
@@ -42,11 +56,13 @@ O projeto inclui o pacote [MCPForUnity](https://github.com/CoplayDev/unity-mcp) 
 
 ```
 Assets/
-  Scenes/SampleScene.unity    # Cena principal
-  UnityFactorySceneHDRP/      # Assets de fábrica (HDRP)
+  Editor/WebExportMenu.cs   # Menu 3kv3dd → Export for Web
+  Scenes/SampleScene.unity  # Cena principal
 docs/
-  index.html                  # Visualizador Three.js (GLTFLoader)
-  assets/scene.glb            # Modelo exportado (fora do LFS, compatível com GitHub Pages)
+  index.html                # Visualizador Three.js (GLTFLoader + Draco)
+  assets/scene.glb          # Modelo exportado (fora do LFS)
+scripts/
+  optimize-web-glb.ps1      # Pós-processamento Draco/WebP
 ```
 
 ## Licença
