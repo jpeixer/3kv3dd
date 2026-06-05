@@ -27,6 +27,6 @@
     "redNode": "red",
     "greenNode": "green",
     "blinkMs": 500,
-    "emissiveIntensity": 8.5
+    "emissiveIntensity": 2.5
   }
 }

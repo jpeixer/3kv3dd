@@ -7,7 +7,7 @@ const LAMP_COLORS = {
   green: 0x00e676,
   off: 0x141414,
 };
-const LAMP_EMISSIVE_INTENSITY = 8.5;
+const LAMP_EMISSIVE_INTENSITY = 2.5;
 
 function prepareLedMaterial(m) {
   if (!m) return;
