@@ -1,22 +1,28 @@
-import * as THREE from 'three';
 import { CSS3DObject, CSS3DRenderer } from 'three/addons/renderers/CSS3DRenderer.js';
 
-function hideMaterial(material) {
+const MAX_DISPLAY_VERTS = 5000;
+
+function dimMaterial(material) {
   if (!material) return;
   material.transparent = true;
-  material.opacity = 0;
+  material.opacity = 0.08;
   material.depthWrite = false;
 }
 
-function findDisplayMesh(model, nodeName) {
-  let match = null;
+/** Encontra apenas o mesh pequeno do tablet (Plane), nunca um join gigante. */
+function findTabletPlane(model, nodeName) {
+  let best = null;
+  let bestVerts = Infinity;
+
   model.traverse((child) => {
-    if (!child.isMesh || match) return;
-    if (child.name === nodeName || child.name.toLowerCase() === nodeName.toLowerCase()) {
-      match = child;
-    }
+    if (!child.isMesh || child.name !== nodeName) return;
+    const verts = child.geometry?.attributes?.position?.count ?? Infinity;
+    if (verts > MAX_DISPLAY_VERTS || verts >= bestVerts) return;
+    best = child;
+    bestVerts = verts;
   });
-  return match;
+
+  return best;
 }
 
 export function createCssRenderer(container) {
@@ -34,34 +40,43 @@ export function attachDisplayEmbed({ model, config, controls }) {
   if (!display?.embedUrl) return null;
 
   const nodeName = display.nodeName || 'Plane';
-  const plane = findDisplayMesh(model, nodeName);
+  const plane = findTabletPlane(model, nodeName);
   if (!plane) {
-    console.warn(`[display] Mesh "${nodeName}" não encontrado no GLB.`);
+    console.warn(`[display] Mesh "${nodeName}" do tablet não encontrado (≤${MAX_DISPLAY_VERTS} vértices).`);
     return null;
   }
 
   const materials = Array.isArray(plane.material) ? plane.material : [plane.material];
-  materials.forEach(hideMaterial);
+  materials.forEach(dimMaterial);
 
   const pixelWidth = display.pixelWidth || 1280;
   const pixelHeight = display.pixelHeight || 800;
+  const bezel = display.bezelPx ?? 10;
+
+  const screen = document.createElement('div');
+  screen.style.width = `${pixelWidth}px`;
+  screen.style.height = `${pixelHeight}px`;
+  screen.style.overflow = 'hidden';
+  screen.style.borderRadius = `${display.borderRadiusPx ?? 6}px`;
+  screen.style.background = '#0a0c10';
+  screen.style.boxShadow = 'inset 0 0 0 2px #2a2f3a';
+  screen.style.pointerEvents = 'auto';
 
   const iframe = document.createElement('iframe');
   iframe.src = display.embedUrl;
   iframe.title = display.title || 'Display';
-  iframe.style.width = `${pixelWidth}px`;
-  iframe.style.height = `${pixelHeight}px`;
+  iframe.style.width = '100%';
+  iframe.style.height = '100%';
   iframe.style.border = '0';
+  iframe.style.display = 'block';
   iframe.style.background = '#0f1419';
-  iframe.style.borderRadius = '2px';
-  iframe.style.boxShadow = 'inset 0 0 0 1px rgba(255,255,255,0.12)';
-  iframe.style.pointerEvents = 'auto';
   iframe.loading = 'lazy';
+  screen.appendChild(iframe);
 
-  iframe.addEventListener('pointerenter', () => {
+  screen.addEventListener('pointerenter', () => {
     if (controls) controls.enabled = false;
   });
-  iframe.addEventListener('pointerleave', () => {
+  screen.addEventListener('pointerleave', () => {
     if (controls) controls.enabled = true;
   });
 
@@ -73,13 +88,18 @@ export function attachDisplayEmbed({ model, config, controls }) {
   const centerY = (bb.min.y + bb.max.y) * 0.5;
   const centerZ = (bb.min.z + bb.max.z) * 0.5;
 
-  const cssObject = new CSS3DObject(iframe);
-  cssObject.position.set(centerX, centerY + 0.002, centerZ);
+  const insetW = Math.max(localWidth - bezel * 0.002, localWidth * 0.92);
+  const insetD = Math.max(localDepth - bezel * 0.002, localDepth * 0.92);
+
+  const cssObject = new CSS3DObject(screen);
+  cssObject.position.set(centerX, centerY + 0.003, centerZ);
   cssObject.rotation.x = -Math.PI / 2;
-  cssObject.scale.set(localWidth / pixelWidth, localDepth / pixelHeight, 1);
+  cssObject.scale.set(insetW / pixelWidth, insetD / pixelHeight, 1);
 
   plane.add(cssObject);
-  console.info(`[display] Embed ativo em "${plane.name}" → ${display.embedUrl}`);
+  console.info(
+    `[display] Tablet em "${plane.name}" (${plane.geometry.attributes.position.count} verts) → ${display.embedUrl}`,
+  );
   return cssObject;
 }
 

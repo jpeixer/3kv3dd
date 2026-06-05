@@ -96,8 +96,6 @@ public static class WebExportMenu
         {
             Format = GltfFormat.Binary,
             FileConflictResolution = FileConflictResolution.Overwrite,
-            Compression = Compression.MeshOpt,
-            JpgQuality = 45,
             ComponentMask = ~(ComponentType.Camera | ComponentType.Animation),
         };
 

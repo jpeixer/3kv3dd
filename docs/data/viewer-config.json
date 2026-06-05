@@ -1,4 +1,4 @@
-{
+﻿{
   "version": 1,
   "modelPath": "./assets/scene.glb",
   "backgroundColor": "#0f1117",
@@ -7,7 +7,9 @@
     "embedUrl": "https://jpeixer.github.io/3kv/",
     "title": "Withstand Voltage Test — Secondary Windings",
     "pixelWidth": 1280,
-    "pixelHeight": 800
+    "pixelHeight": 800,
+    "bezelPx": 10,
+    "borderRadiusPx": 6
   },
   "camera": {
     "fov": 45,
