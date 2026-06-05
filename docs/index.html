@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3kv3dd — Visualização 3D</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #0f1117; color: #e8eaed; font-family: "Segoe UI", system-ui, sans-serif; }
+    #canvas { display: block; width: 100%; height: 100%; }
+    .overlay {
+      position: fixed; inset: 0; pointer-events: none;
+      display: flex; flex-direction: column; justify-content: space-between;
+    }
+    header {
+      pointer-events: auto;
+      padding: 1rem 1.25rem;
+      background: linear-gradient(180deg, rgba(15,17,23,.92), transparent);
+    }
+    header h1 { font-size: 1.25rem; font-weight: 600; letter-spacing: .02em; }
+    header p { margin-top: .35rem; font-size: .875rem; color: #9aa0a6; max-width: 42rem; }
+    footer {
+      pointer-events: auto;
+      padding: .75rem 1.25rem;
+      background: linear-gradient(0deg, rgba(15,17,23,.92), transparent);
+      font-size: .8rem; color: #9aa0a6;
+    }
+    #status {
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      padding: 1rem 1.5rem; border-radius: .5rem;
+      background: rgba(30,34,44,.95); border: 1px solid #3c4048;
+      font-size: .95rem;
+    }
+    #status.hidden { display: none; }
+    .error { color: #f28b82; }
+  </style>
+</head>
+<body>
+  <canvas id="canvas"></canvas>
+  <div class="overlay">
+    <header>
+      <h1>3kv3dd — Painel de Controle Industrial</h1>
+      <p>Arraste para girar · Scroll para zoom · Botão direito para mover. Modelo exportado da cena Unity SampleScene.</p>
+    </header>
+    <footer>Unity 6 · URP · Visualizador Three.js</footer>
+  </div>
+  <div id="status">Carregando modelo 3D…</div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { OBJLoader } from 'three/addons/loaders/OBJLoader.js';
+    import { MTLLoader } from 'three/addons/loaders/MTLLoader.js';
+
+    const statusEl = document.getElementById('status');
+    const canvas = document.getElementById('canvas');
+
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0f1117);
+    scene.fog = new THREE.Fog(0x0f1117, 40, 120);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 500);
+    camera.position.set(8, 12, 14);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.target.set(0, 8, 0);
+
+    scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+    const key = new THREE.DirectionalLight(0xffffff, 1.1);
+    key.position.set(10, 20, 12);
+    scene.add(key);
+    const fill = new THREE.DirectionalLight(0x88aaff, 0.35);
+    fill.position.set(-8, 6, -6);
+    scene.add(fill);
+
+    const grid = new THREE.GridHelper(40, 40, 0x2a2f3a, 0x1a1e26);
+    grid.position.y = -0.01;
+    scene.add(grid);
+
+    function fitCamera(object) {
+      const box = new THREE.Box3().setFromObject(object);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      const maxDim = Math.max(size.x, size.y, size.z);
+      const dist = maxDim / (2 * Math.tan((camera.fov * Math.PI) / 360)) * 1.4;
+      camera.position.copy(center.clone().add(new THREE.Vector3(dist * 0.7, dist * 0.55, dist * 0.85)));
+      controls.target.copy(center);
+      controls.update();
+    }
+
+    const mtlLoader = new MTLLoader();
+    mtlLoader.setPath('models/');
+    mtlLoader.load('scene.mtl', (materials) => {
+      materials.preload();
+      const objLoader = new OBJLoader();
+      objLoader.setMaterials(materials);
+      objLoader.setPath('models/');
+      objLoader.load('scene.obj', (object) => {
+        object.traverse((child) => {
+          if (child.isMesh) {
+            child.castShadow = true;
+            child.receiveShadow = true;
+          }
+        });
+        scene.add(object);
+        fitCamera(object);
+        statusEl.classList.add('hidden');
+      }, undefined, (err) => {
+        statusEl.innerHTML = '<span class="error">Erro ao carregar OBJ.</span>';
+        console.error(err);
+      });
+    }, undefined, (err) => {
+      statusEl.innerHTML = '<span class="error">Erro ao carregar materiais.</span>';
+      console.error(err);
+    });
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+
+    function animate() {
+      requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+  </script>
+</body>
+</html>
