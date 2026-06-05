@@ -8,7 +8,7 @@ A visualização web interativa está em [`docs/`](docs/):
 
 - **URL:** https://jpeixer.github.io/3kv3dd/
 - Arraste para girar, scroll para zoom, botão direito para mover a câmera.
-- O modelo é exportado da cena `Assets/Scenes/SampleScene.unity` via **glTFast** (mesmo fluxo do [Rain-machine](https://jpeixer.github.io/Rain-machine/)).
+- O **Plane** da cena exibe o portal [3kv](https://jpeixer.github.io/3kv/) embarcado como tela interativa no viewer web.
 
 ### Publicar / atualizar o site
 
@@ -34,7 +34,7 @@ npx --yes serve docs
 | H3000_PanelControl | Painel H3000 |
 | GraphicT | Tablet gráfico |
 | tower lamp | Torre sinalizadora |
-| Plane | Superfície auxiliar |
+| Plane | Tela embarcada — portal [3kv](https://jpeixer.github.io/3kv/) |
 
 ## Requisitos
 
@@ -57,9 +57,12 @@ O projeto inclui o pacote [MCPForUnity](https://github.com/CoplayDev/unity-mcp) 
 ```
 Assets/
   Editor/WebExportMenu.cs   # Menu 3kv3dd → Export for Web
+  Scripts/DisplayScreen.cs  # Marca o Plane como display embarcado
   Scenes/SampleScene.unity  # Cena principal
 docs/
-  index.html                # Visualizador Three.js (GLTFLoader + Draco)
+  index.html                # Visualizador Three.js + iframe no Plane
+  data/viewer-config.json   # URL do embed (3kv)
+  js/display-embed.js       # CSS3D iframe no mesh Plane
   assets/scene.glb          # Modelo exportado (fora do LFS)
 scripts/
   optimize-web-glb.ps1      # Pós-processamento Draco/WebP

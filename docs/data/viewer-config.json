@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "modelPath": "./assets/scene.glb",
+  "backgroundColor": "#0f1117",
+  "display": {
+    "nodeName": "Plane",
+    "embedUrl": "https://jpeixer.github.io/3kv/",
+    "title": "Withstand Voltage Test — Secondary Windings",
+    "pixelWidth": 1280,
+    "pixelHeight": 800
+  },
+  "camera": {
+    "fov": 45,
+    "minDistance": 0.8,
+    "maxDistance": 80,
+    "target": [0, 8, 0]
+  },
+  "lights": {
+    "ambientIntensity": 0.55,
+    "directionalIntensity": 1.1,
+    "directionalPosition": [10, 20, 12]
+  }
+}

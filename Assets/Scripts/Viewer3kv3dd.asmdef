@@ -1,14 +1,8 @@
 {
-    "name": "Viewer3kv3dd.Editor",
+    "name": "Viewer3kv3dd",
     "rootNamespace": "",
-    "references": [
-        "Viewer3kv3dd",
-        "glTFast",
-        "glTFast.Export"
-    ],
-    "includePlatforms": [
-        "Editor"
-    ],
+    "references": [],
+    "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": false,

@@ -7,10 +7,10 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     html, body { width: 100%; height: 100%; overflow: hidden; background: #0f1117; color: #e8eaed; font-family: "Segoe UI", system-ui, sans-serif; }
-    #canvas-wrap { width: 100%; height: 100%; }
+    #canvas-wrap { position: relative; width: 100%; height: 100%; }
     #canvas { display: block; width: 100%; height: 100%; }
     .overlay {
-      position: fixed; inset: 0; pointer-events: none;
+      position: fixed; inset: 0; pointer-events: none; z-index: 2;
       display: flex; flex-direction: column; justify-content: space-between;
     }
     header {
@@ -27,14 +27,14 @@
       font-size: .8rem; color: #9aa0a6;
     }
     #loading {
-      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); z-index: 3;
       padding: 1rem 1.5rem; border-radius: .5rem;
       background: rgba(30,34,44,.95); border: 1px solid #3c4048;
       font-size: .95rem;
     }
     #loading.hidden { display: none; }
     #error-banner {
-      position: fixed; top: 1rem; left: 50%; transform: translateX(-50%);
+      position: fixed; top: 1rem; left: 50%; transform: translateX(-50%); z-index: 3;
       max-width: 90vw; padding: .75rem 1rem; border-radius: .5rem;
       background: rgba(90, 20, 20, .95); border: 1px solid #c5221f;
       font-size: .875rem; color: #f28b82;
@@ -57,9 +57,9 @@
   <div class="overlay">
     <header>
       <h1>3kv3dd — Painel de Controle Industrial</h1>
-      <p>Arraste para girar · Scroll para zoom · Botão direito para mover. Modelo exportado da cena Unity SampleScene.</p>
+      <p>Arraste para girar · Scroll para zoom · Aproxime do display e interaja com o portal 3kv na tela (Plane).</p>
     </header>
-    <footer>Unity 6 · URP · Three.js GLB</footer>
+    <footer>Unity 6 · URP · Three.js · Display: <a href="https://jpeixer.github.io/3kv/" style="color:#8ab4f8">jpeixer.github.io/3kv</a></footer>
   </div>
   <div id="loading">Carregando modelo 3D…</div>
   <div id="error-banner" class="hidden"></div>
@@ -69,19 +69,29 @@
     import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
     import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
     import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+    import {
+      attachDisplayEmbed,
+      createCssRenderer,
+      renderCssScene,
+      resizeCssRenderer,
+    } from './js/display-embed.js';
 
-    const MODEL_PATH = './assets/scene.glb';
-    const dracoLoader = new DRACOLoader();
-    dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
+    const CONFIG_URL = './data/viewer-config.json';
     const loadingEl = document.getElementById('loading');
     const errorBanner = document.getElementById('error-banner');
+    const canvasWrap = document.getElementById('canvas-wrap');
     const canvas = document.getElementById('canvas');
+
+    const dracoLoader = new DRACOLoader();
+    dracoLoader.setDecoderPath('https://www.gstatic.com/draco/versioned/decoders/1.5.7/');
 
     const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1;
+
+    const cssRenderer = createCssRenderer(canvasWrap);
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x0f1117);
@@ -96,8 +106,7 @@
     controls.target.set(0, 8, 0);
     controls.enablePan = true;
 
-    const amb = new THREE.AmbientLight(0xffffff, 0.55);
-    scene.add(amb);
+    scene.add(new THREE.AmbientLight(0xffffff, 0.55));
     const key = new THREE.DirectionalLight(0xffffff, 1.1);
     key.position.set(10, 20, 12);
     scene.add(key);
@@ -108,6 +117,8 @@
     const grid = new THREE.GridHelper(40, 40, 0x2a2f3a, 0x1a1e26);
     grid.position.y = -0.01;
     scene.add(grid);
+
+    let viewerConfig = null;
 
     function showError(msg) {
       errorBanner.textContent = msg;
@@ -122,9 +133,15 @@
       const dist = maxDim * 1.8;
       camera.position.set(center.x + dist * 0.6, center.y + dist * 0.4, center.z + dist * 0.8);
       controls.target.copy(center);
-      controls.minDistance = maxDim * 0.3;
+      controls.minDistance = maxDim * 0.15;
       controls.maxDistance = maxDim * 6;
       controls.update();
+    }
+
+    async function loadJson(url) {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Falha ao carregar ${url}`);
+      return res.json();
     }
 
     function loadGlb(url) {
@@ -136,18 +153,19 @@
     }
 
     function resize() {
-      const wrap = document.getElementById('canvas-wrap');
-      const w = wrap.clientWidth;
-      const h = wrap.clientHeight;
+      const w = canvasWrap.clientWidth;
+      const h = canvasWrap.clientHeight;
       camera.aspect = w / h;
       camera.updateProjectionMatrix();
       renderer.setSize(w, h, false);
+      resizeCssRenderer(cssRenderer, w, h);
     }
 
     function animate() {
       requestAnimationFrame(animate);
       controls.update();
       renderer.render(scene, camera);
+      renderCssScene(cssRenderer, scene, camera);
     }
 
     async function init() {
@@ -155,7 +173,13 @@
       window.addEventListener('resize', resize);
 
       try {
-        const gltf = await loadGlb(MODEL_PATH);
+        viewerConfig = await loadJson(CONFIG_URL);
+        if (viewerConfig.backgroundColor) {
+          scene.background = new THREE.Color(viewerConfig.backgroundColor);
+        }
+
+        const modelPath = viewerConfig.modelPath || './assets/scene.glb';
+        const gltf = await loadGlb(modelPath);
         const model = gltf.scene;
         model.traverse((child) => {
           if (child.isMesh) {
@@ -165,9 +189,10 @@
         });
         scene.add(model);
         fitCamera(model);
+        attachDisplayEmbed({ model, config: viewerConfig, controls });
       } catch (err) {
         console.error(err);
-        showError('Falha ao carregar o modelo GLB. Verifique se o arquivo está publicado no repositório.');
+        showError('Falha ao carregar o viewer. Verifique modelo GLB e viewer-config.json.');
       } finally {
         loadingEl.classList.add('hidden');
         animate();
