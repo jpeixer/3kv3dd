@@ -45,8 +45,8 @@ Assets/
   Scenes/SampleScene.unity    # Cena principal
   UnityFactorySceneHDRP/      # Assets de fábrica (HDRP)
 docs/
-  index.html                  # Visualizador Three.js
-  models/scene.obj            # Modelo exportado
+  index.html                  # Visualizador Three.js (GLTFLoader)
+  assets/scene.glb            # Modelo exportado (fora do LFS, compatível com GitHub Pages)
 ```
 
 ## Licença
