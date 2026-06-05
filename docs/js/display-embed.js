@@ -110,7 +110,7 @@ export function attachDisplayEmbed({ model, config, controls }) {
   console.info(
     `[display] Tablet em "${plane.name}" (${plane.geometry.attributes.position.count} verts) → ${display.embedUrl}`,
   );
-  return cssObject;
+  return { iframe, plane, cssObject };
 }
 
 export function resizeCssRenderer(cssRenderer, width, height) {

@@ -57,7 +57,7 @@
   <div class="overlay">
     <header>
       <h1>3kv3dd — Painel de Controle Industrial</h1>
-      <p>Arraste para girar · Scroll para zoom · Aproxime do display e interaja com o portal 3kv na tela (Plane).</p>
+      <p>Arraste para girar · Scroll para zoom · Torre sinalizadora: verde = parado, vermelho piscando + buzina = ensaio 3 kV ativo.</p>
     </header>
     <footer>Unity 6 · URP · Three.js · Display: <a href="https://jpeixer.github.io/3kv/" style="color:#8ab4f8">jpeixer.github.io/3kv</a></footer>
   </div>
@@ -75,6 +75,7 @@
       renderCssScene,
       resizeCssRenderer,
     } from './js/display-embed.js';
+    import { TowerLampController, listenEmbedSafety } from './js/tower-lamp.js';
 
     const CONFIG_URL = './data/viewer-config.json';
     const loadingEl = document.getElementById('loading');
@@ -119,6 +120,8 @@
     scene.add(grid);
 
     let viewerConfig = null;
+    let towerLamp = null;
+    let removeSafetyListener = null;
 
     function showError(msg) {
       errorBanner.textContent = msg;
@@ -190,6 +193,11 @@
         scene.add(model);
         fitCamera(model);
         attachDisplayEmbed({ model, config: viewerConfig, controls });
+        towerLamp = new TowerLampController(model, viewerConfig);
+        removeSafetyListener = listenEmbedSafety((operational) => {
+          towerLamp.setOperational(operational);
+        });
+        canvas.addEventListener('pointerdown', () => towerLamp?.unlockAudio(), { once: true });
       } catch (err) {
         console.error(err);
         showError('Falha ao carregar o viewer. Verifique modelo GLB e viewer-config.json.');
@@ -198,6 +206,11 @@
         animate();
       }
     }
+
+    window.addEventListener('beforeunload', () => {
+      removeSafetyListener?.();
+      towerLamp?.dispose();
+    });
 
     init();
   </script>

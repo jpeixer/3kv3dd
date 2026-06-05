@@ -9,6 +9,7 @@ A visualização web interativa está em [`docs/`](docs/):
 - **URL:** https://jpeixer.github.io/3kv3dd/
 - Arraste para girar, scroll para zoom, botão direito para mover a câmera.
 - O **Plane** da cena exibe o portal [3kv](https://jpeixer.github.io/3kv/) embarcado como tela interativa no viewer web.
+- **Torre sinalizadora** (`tower lamp`): **verde** aceso quando o ensaio está parado; **vermelho** piscando + **buzina** (0,5 s / 0,5 s) durante o ensaio em `/test` (high voltage).
 
 ### Publicar / atualizar o site
 
@@ -63,6 +64,8 @@ docs/
   index.html                # Visualizador Three.js + iframe no Plane
   data/viewer-config.json   # URL do embed (3kv)
   js/display-embed.js       # CSS3D iframe no mesh Plane
+  js/tower-lamp.js          # Sinaleiro + listener postMessage 3kv
+  js/safety-buzzer.js       # Buzina 500 ms ON/OFF
   assets/scene.glb          # Modelo exportado (fora do LFS)
 scripts/
   optimize-web-glb.ps1      # Pós-processamento Draco/WebP
