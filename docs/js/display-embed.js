@@ -2,10 +2,19 @@ import { CSS3DObject, CSS3DRenderer } from 'three/addons/renderers/CSS3DRenderer
 
 const MAX_DISPLAY_VERTS = 5000;
 
-function dimMaterial(material) {
+/** Clona materiais para não afetar outros meshes que compartilham a mesma referência (ex.: Tool Cart). */
+function isolateMaterials(mesh) {
+  if (Array.isArray(mesh.material)) {
+    mesh.material = mesh.material.map((m) => (m ? m.clone() : m));
+  } else if (mesh.material) {
+    mesh.material = mesh.material.clone();
+  }
+}
+
+function hideTabletSurface(material) {
   if (!material) return;
   material.transparent = true;
-  material.opacity = 0.08;
+  material.opacity = 0;
   material.depthWrite = false;
 }
 
@@ -46,8 +55,9 @@ export function attachDisplayEmbed({ model, config, controls }) {
     return null;
   }
 
+  isolateMaterials(plane);
   const materials = Array.isArray(plane.material) ? plane.material : [plane.material];
-  materials.forEach(dimMaterial);
+  materials.forEach(hideTabletSurface);
 
   const pixelWidth = display.pixelWidth || 1280;
   const pixelHeight = display.pixelHeight || 800;
@@ -59,7 +69,7 @@ export function attachDisplayEmbed({ model, config, controls }) {
   screen.style.overflow = 'hidden';
   screen.style.borderRadius = `${display.borderRadiusPx ?? 6}px`;
   screen.style.background = '#0a0c10';
-  screen.style.boxShadow = 'inset 0 0 0 2px #2a2f3a';
+  screen.style.boxShadow = 'inset 0 0 0 3px #1a1e26, 0 0 0 1px #3c4048';
   screen.style.pointerEvents = 'auto';
 
   const iframe = document.createElement('iframe');
