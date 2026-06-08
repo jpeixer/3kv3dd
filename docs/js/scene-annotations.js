@@ -4,6 +4,9 @@ const DEFAULT_ANNOTATIONS = [
   { nodeName: 'Plane (1)', label: 'HIPOT UG36 ETL', labelOffset: [100, -72] },
   { nodeName: 'Tool Cart', label: 'Aluminum frame enclosure', labelOffset: [-140, -80] },
   { nodeName: 'Plane', label: 'Screen 13"', maxVerts: 5000, labelOffset: [90, -64] },
+  { nodeName: 'tower lamp', label: 'Towerlamp + Horn', labelOffset: [-130, -76] },
+  { nodeName: 'BACK_CHASSIS', label: 'PLC, Database integration SIVAS, CSV, etc. 12 Channels with 10kV relay', labelOffset: [110, -88] },
+  { nodeName: 'GraphicT', label: '11" Tablet', labelOffset: [95, -68] },
 ];
 
 const CLICK_MAX_PX = 14;
