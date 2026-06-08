@@ -80,44 +80,65 @@ function findLedMeshUnderRoot(root, ledName) {
   return found;
 }
 
-/**
- * GLTFLoader reuses one Mesh when several nodes share the same mesh index — only the last
- * tower keeps red/green in the scene graph. Clone LEDs onto every tower root.
- */
-function ensurePerTowerLedMeshes(model, config) {
-  const redName = config?.towerLamp?.redNode ?? 'red';
-  const greenName = config?.towerLamp?.greenNode ?? 'green';
-  const roots = findTowerLampRoots(model, config);
-  if (!roots.length) return { roots: [], cloned: 0 };
-
-  let redTemplate = null;
-  let greenTemplate = null;
-  model.traverse((child) => {
-    if (!child.isMesh) return;
-    if (child.name === redName && !redTemplate) redTemplate = child;
-    if (child.name === greenName && !greenTemplate) greenTemplate = child;
+function findMeshByNameUnderRoot(root, meshName) {
+  let found = null;
+  root.traverse((child) => {
+    if (child.isMesh && child.name === meshName) found = child;
   });
-  if (!redTemplate || !greenTemplate) return { roots, cloned: 0 };
+  return found;
+}
+
+function meshCountUnderRoot(root) {
+  let count = 0;
+  root.traverse((child) => {
+    if (child.isMesh) count += 1;
+  });
+  return count;
+}
+
+/**
+ * GLTFLoader keeps one Mesh per shared mesh index — prefab instances steal geometry.
+ * Clone every named part onto each tower root so all lamps stay visible.
+ */
+export function fixSharedTowerLampMeshes(model, config) {
+  const roots = findTowerLampRoots(model, config);
+  if (roots.length <= 1) return 0;
+
+  let donor = roots[0];
+  let maxMeshes = 0;
+  roots.forEach((root) => {
+    const count = meshCountUnderRoot(root);
+    if (count > maxMeshes) {
+      maxMeshes = count;
+      donor = root;
+    }
+  });
+
+  const templates = new Map();
+  donor.traverse((child) => {
+    if (child.isMesh && child.name) templates.set(child.name, child);
+  });
+  if (!templates.size) return 0;
 
   let cloned = 0;
   roots.forEach((root) => {
-    [redName, greenName].forEach((ledName) => {
-      if (findLedMeshUnderRoot(root, ledName)) return;
-      const template = ledName === redName ? redTemplate : greenTemplate;
+    templates.forEach((template, meshName) => {
+      if (findMeshByNameUnderRoot(root, meshName)) return;
       const clone = template.clone();
-      clone.name = ledName;
+      clone.name = meshName;
       clone.material = template.material;
       root.add(clone);
       cloned += 1;
     });
   });
 
-  return { roots, cloned };
+  return cloned;
 }
 
 /** Collect red/green LED mesh from each tower-lamp root. */
 function findAllTowerLedMeshes(model, config) {
-  const { roots, cloned } = ensurePerTowerLedMeshes(model, config);
+  const cloned = fixSharedTowerLampMeshes(model, config);
+  const roots = findTowerLampRoots(model, config);
   const redName = config?.towerLamp?.redNode ?? 'red';
   const greenName = config?.towerLamp?.greenNode ?? 'green';
   const reds = [];
@@ -164,7 +185,7 @@ export class TowerLampController {
       console.warn('[tower-lamp] red/green meshes not found under tower lamp roots.');
     } else {
       if (cloned > 0) {
-        console.info(`[tower-lamp] cloned ${cloned} LED mesh(es) for shared GLB mesh indices`);
+        console.info(`[tower-lamp] cloned ${cloned} mesh part(s) for shared GLB prefab indices`);
       }
       console.info(
         `[tower-lamp] linked ${reds.length} red + ${greens.length} green mesh(es) to shared materials`,
