@@ -1,6 +1,7 @@
 ﻿{
   "version": 1,
   "modelPath": "./assets/scene.glb",
+  "modelRevision": "20260608-tower-sync-v3",
   "backgroundColor": "#0f1117",
   "display": {
     "nodeName": "Plane",

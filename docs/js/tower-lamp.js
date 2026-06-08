@@ -20,9 +20,9 @@ function prepareLedMaterial(m) {
   m.needsUpdate = true;
 }
 
-function applyLampGlow(mesh, on, hexColor, intensity = LAMP_EMISSIVE_INTENSITY) {
-  if (!mesh?.isMesh) return;
-  const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+function setMaterialGlow(material, on, hexColor, intensity = LAMP_EMISSIVE_INTENSITY) {
+  if (!material) return;
+  const mats = Array.isArray(material) ? material : [material];
   mats.forEach((m) => {
     if (!m) return;
     m.metalness = 0;
@@ -41,89 +41,49 @@ function applyLampGlow(mesh, on, hexColor, intensity = LAMP_EMISSIVE_INTENSITY) 
   });
 }
 
-function ensureUniqueMaterials(mesh) {
-  if (!mesh?.isMesh) return;
-  if (Array.isArray(mesh.material)) {
-    mesh.material = mesh.material.map((m) => (m ? m.clone() : m));
-  } else if (mesh.material) {
-    mesh.material = mesh.material.clone();
-  }
-}
-
 function normalizeNodeName(name) {
   return (name || '').replace(/ /g, '_');
-}
-
-function nodeNamesMatch(a, b) {
-  return normalizeNodeName(a) === normalizeNodeName(b);
 }
 
 function isTowerLampRootName(name) {
   return /tower[\s_]?lamp/i.test(name || '');
 }
 
-function findLedsInRoot(root, redName, greenName) {
-  const reds = [];
-  const greens = [];
-  root.traverse((child) => {
-    if (!child.isMesh) return;
-    if (child.name === redName) reds.push(child);
-    if (child.name === greenName) greens.push(child);
-  });
-  return { reds, greens };
+function isUnderTowerLamp(node) {
+  let current = node?.parent ?? null;
+  while (current) {
+    if (isTowerLampRootName(current.name)) return true;
+    current = current.parent;
+  }
+  return false;
 }
 
-function findTowerLampRoots(model, config) {
-  const configured = [
-    ...(config?.towerLamp?.rootNames ?? []),
-    ...(config?.towerLamp?.rootName ? [config.towerLamp.rootName] : []),
-    ...(config?.towerLamp?.extraRootNames ?? []),
-  ];
-  const uniqueConfigured = [...new Set(configured.map(normalizeNodeName))];
-
-  const roots = [];
-  model.traverse((node) => {
-    if (uniqueConfigured.some((name) => nodeNamesMatch(node.name, name))) roots.push(node);
-  });
-
-  if (roots.length) return roots;
-
-  model.traverse((node) => {
-    if (!isTowerLampRootName(node.name)) return;
-    const { reds, greens } = findLedsInRoot(
-      node,
-      config?.towerLamp?.redNode ?? 'red',
-      config?.towerLamp?.greenNode ?? 'green',
-    );
-    if (reds.length && greens.length) roots.push(node);
-  });
-
-  return roots;
-}
-
+/** Collect every red/green LED mesh under any tower-lamp root (works with shared GLB meshes). */
 function findAllTowerLedMeshes(model, config) {
   const redName = config?.towerLamp?.redNode ?? 'red';
   const greenName = config?.towerLamp?.greenNode ?? 'green';
-  const roots = findTowerLampRoots(model, config);
   const reds = [];
   const greens = [];
 
-  const collect = (root) => {
-    const found = findLedsInRoot(root, redName, greenName);
-    reds.push(...found.reds);
-    greens.push(...found.greens);
-  };
+  model.traverse((child) => {
+    if (!child.isMesh || !isUnderTowerLamp(child)) return;
+    if (child.name === redName) reds.push(child);
+    if (child.name === greenName) greens.push(child);
+  });
 
-  if (roots.length) roots.forEach(collect);
-  else {
-    model.traverse((child) => {
-      if (!child.isMesh) return;
-      if (child.name === redName) reds.push(child);
-      if (child.name === greenName) greens.push(child);
-    });
-  }
+  return { reds, greens };
+}
 
-  return { reds, greens, roots };
+/** One shared material per color — both towers always show the same LED state. */
+function linkSharedMaterial(meshes) {
+  if (!meshes.length) return null;
+  const source = Array.isArray(meshes[0].material) ? meshes[0].material[0] : meshes[0].material;
+  const shared = source ? source.clone() : new THREE.MeshStandardMaterial();
+  prepareLedMaterial(shared);
+  meshes.forEach((mesh) => {
+    mesh.material = shared;
+  });
+  return shared;
 }
 
 export class TowerLampController {
@@ -133,23 +93,19 @@ export class TowerLampController {
     this.blinkMs = config?.towerLamp?.blinkMs ?? BLINK_MS;
     this.operational = false;
     this.buzzer = new SafetyBuzzer();
-    this.rafId = 0;
+    this.blinkTimer = 0;
 
-    const { reds, greens, roots } = findAllTowerLedMeshes(model, config);
+    const { reds, greens } = findAllTowerLedMeshes(model, config);
     this.reds = reds;
     this.greens = greens;
+    this.redMaterial = linkSharedMaterial(reds);
+    this.greenMaterial = linkSharedMaterial(greens);
 
-    [...reds, ...greens].forEach((mesh) => {
-      ensureUniqueMaterials(mesh);
-      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-      mats.forEach(prepareLedMaterial);
-    });
-
-    if (!reds.length || !greens.length) {
-      console.warn('[tower-lamp] red/green meshes not found on configured tower lamp roots.');
+    if (!this.redMaterial || !this.greenMaterial) {
+      console.warn('[tower-lamp] red/green meshes not found under tower lamp roots.');
     } else {
       console.info(
-        `[tower-lamp] ${roots.length || 'auto'} root(s), ${reds.length} red + ${greens.length} green LED mesh(es) synced`,
+        `[tower-lamp] linked ${reds.length} red + ${greens.length} green mesh(es) to shared materials`,
       );
       this.setIdle();
     }
@@ -173,13 +129,13 @@ export class TowerLampController {
   }
 
   setIdle() {
-    this.reds.forEach((mesh) => applyLampGlow(mesh, false, LAMP_COLORS.red, this.lampIntensity));
-    this.greens.forEach((mesh) => applyLampGlow(mesh, true, LAMP_COLORS.green, this.lampIntensity));
+    setMaterialGlow(this.redMaterial, false, LAMP_COLORS.red, this.lampIntensity);
+    setMaterialGlow(this.greenMaterial, true, LAMP_COLORS.green, this.lampIntensity);
   }
 
   setEnergizedPhase(on) {
-    this.reds.forEach((mesh) => applyLampGlow(mesh, on, LAMP_COLORS.red, this.lampIntensity));
-    this.greens.forEach((mesh) => applyLampGlow(mesh, false, LAMP_COLORS.green, this.lampIntensity));
+    setMaterialGlow(this.redMaterial, on, LAMP_COLORS.red, this.lampIntensity);
+    setMaterialGlow(this.greenMaterial, false, LAMP_COLORS.green, this.lampIntensity);
   }
 
   startBlinkLoop() {
@@ -188,15 +144,15 @@ export class TowerLampController {
       if (!this.operational) return;
       const on = Math.floor(Date.now() / this.blinkMs) % 2 === 0;
       this.setEnergizedPhase(on);
-      this.rafId = requestAnimationFrame(tick);
     };
-    this.rafId = requestAnimationFrame(tick);
+    tick();
+    this.blinkTimer = window.setInterval(tick, this.blinkMs);
   }
 
   stopBlinkLoop() {
-    if (this.rafId) {
-      cancelAnimationFrame(this.rafId);
-      this.rafId = 0;
+    if (this.blinkTimer) {
+      clearInterval(this.blinkTimer);
+      this.blinkTimer = 0;
     }
   }
 
