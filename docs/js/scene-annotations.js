@@ -2,54 +2,48 @@ import * as THREE from 'three';
 
 const DEFAULT_ANNOTATIONS = [
   { nodeName: 'Plane (1)', label: 'HIPOT UG36 ETL', labelOffset: [100, -72] },
-  { nodeName: 'Tool Cart', label: 'Aluminum frame enclosure', matchHierarchy: true, labelOffset: [-140, -80] },
+  { nodeName: 'Tool Cart', label: 'Aluminum frame enclosure', labelOffset: [-140, -80] },
   { nodeName: 'Plane', label: 'Screen 13"', maxVerts: 5000, labelOffset: [90, -64] },
 ];
 
-function findMeshByName(model, nodeName, maxVerts = Infinity) {
-  let best = null;
-  let bestVerts = Infinity;
-  model.traverse((child) => {
-    if (!child.isMesh || child.name !== nodeName) return;
-    const verts = child.geometry?.attributes?.position?.count ?? Infinity;
-    if (verts > maxVerts || verts >= bestVerts) return;
-    best = child;
-    bestVerts = verts;
-  });
-  return best;
-}
-
-function resolveAnnotationMesh(model, entry) {
-  if (entry.maxVerts != null) return findMeshByName(model, entry.nodeName, entry.maxVerts);
-  if (entry.matchHierarchy) {
-    let found = null;
-    model.traverse((child) => {
-      if (found || !child.isMesh) return;
-      let node = child;
-      while (node) {
-        if (node.name === entry.nodeName) {
-          found = child;
-          break;
-        }
-        node = node.parent;
-      }
-    });
-    return found;
-  }
-  return findMeshByName(model, entry.nodeName);
-}
-
-function buildMeshIndex(model, entries) {
+function collectMeshes(root) {
   const meshes = [];
-  entries.forEach((entry, index) => {
-    const mesh = resolveAnnotationMesh(model, entry);
-    if (mesh) meshes.push({ mesh, entry, index });
-    else console.warn(`[annotations] Mesh not found for "${entry.nodeName}"`);
+  root.traverse((child) => {
+    if (child.isMesh) meshes.push(child);
   });
   return meshes;
 }
 
-function anchorWorldPoint(mesh) {
+/** Walk up from hit object; longest / most specific nodeName match wins. */
+function resolveAnnotationIndex(object, entries) {
+  const chain = [];
+  let node = object;
+  while (node) {
+    chain.push(node);
+    node = node.parent;
+  }
+
+  for (const entry of entries) {
+    const onChain = chain.some((n) => n.name === entry.nodeName);
+    if (!onChain) continue;
+
+    if (entry.maxVerts != null) {
+      let mesh = object.isMesh ? object : null;
+      if (!mesh) {
+        mesh = chain.find((n) => n.isMesh && n.name === entry.nodeName);
+      }
+      if (!mesh?.isMesh) continue;
+      const verts = mesh.geometry?.attributes?.position?.count ?? Infinity;
+      if (verts > entry.maxVerts) continue;
+    }
+
+    return entries.indexOf(entry);
+  }
+  return -1;
+}
+
+function anchorWorldPoint(mesh, hitPoint = null) {
+  if (hitPoint) return hitPoint.clone();
   if (!mesh.geometry.boundingBox) mesh.geometry.computeBoundingBox();
   const box = mesh.geometry.boundingBox.clone();
   const top = new THREE.Vector3(
@@ -91,17 +85,22 @@ function labelAnchorPoint(labelX, labelY, labelW, labelH, targetX, targetY) {
 }
 
 export class SceneAnnotations {
-  constructor({ model, camera, canvas, config }) {
+  constructor({ model, camera, canvas, canvasWrap, controls, config }) {
     this.model = model;
     this.camera = camera;
     this.canvas = canvas;
+    this.canvasWrap = canvasWrap || canvas.parentElement;
+    this.controls = controls;
     this.entries = config?.annotations?.length ? config.annotations : DEFAULT_ANNOTATIONS;
-    this.meshIndex = buildMeshIndex(model, this.entries);
+    this.pickableMeshes = collectMeshes(model);
     this.activeIndex = -1;
+    this.activeMesh = null;
+    this.activeHitPoint = null;
     this.anchor = new THREE.Vector3();
     this.raycaster = new THREE.Raycaster();
     this.pointer = new THREE.Vector2();
     this.dragStart = null;
+    this.orbitMoved = false;
 
     this.root = document.createElement('div');
     this.root.id = 'annotation-layer';
@@ -109,29 +108,39 @@ export class SceneAnnotations {
       <svg id="annotation-svg" aria-hidden="true"><line id="annotation-line"></line></svg>
       <div id="annotation-label" class="hidden"></div>
     `;
-    canvas.parentElement.appendChild(this.root);
+    this.canvasWrap.appendChild(this.root);
 
     this.svg = this.root.querySelector('#annotation-svg');
     this.line = this.root.querySelector('#annotation-line');
     this.labelEl = this.root.querySelector('#annotation-label');
 
-    canvas.addEventListener('pointerdown', this.onPointerDown);
-    canvas.addEventListener('pointerup', this.onPointerUp);
+    this.onPointerDown = this.onPointerDown.bind(this);
+    this.onPointerUp = this.onPointerUp.bind(this);
+    this.onControlsStart = () => { this.orbitMoved = false; };
+    this.onControlsChange = () => { this.orbitMoved = true; };
+
+    this.canvasWrap.addEventListener('pointerdown', this.onPointerDown);
+    this.canvasWrap.addEventListener('pointerup', this.onPointerUp);
+    controls?.addEventListener('start', this.onControlsStart);
+    controls?.addEventListener('change', this.onControlsChange);
+
+    console.info(`[annotations] ${this.pickableMeshes.length} meshes, ${this.entries.length} labels`);
   }
 
-  onPointerDown = (event) => {
+  onPointerDown(event) {
     if (event.button !== 0) return;
     this.dragStart = { x: event.clientX, y: event.clientY };
-  };
+    this.orbitMoved = false;
+  }
 
-  onPointerUp = (event) => {
+  onPointerUp(event) {
     if (event.button !== 0 || !this.dragStart) return;
     const dx = event.clientX - this.dragStart.x;
     const dy = event.clientY - this.dragStart.y;
     this.dragStart = null;
-    if (Math.hypot(dx, dy) > 6) return;
+    if (this.orbitMoved || Math.hypot(dx, dy) > 10) return;
     this.pick(event);
-  };
+  }
 
   pick(event) {
     const rect = this.canvas.getBoundingClientRect();
@@ -139,21 +148,21 @@ export class SceneAnnotations {
     this.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
     this.raycaster.setFromCamera(this.pointer, this.camera);
 
-    const meshes = this.meshIndex.map((item) => item.mesh);
-    const hits = this.raycaster.intersectObjects(meshes, false);
-    if (!hits.length) {
-      this.clear();
-      return;
+    const hits = this.raycaster.intersectObjects(this.pickableMeshes, false);
+    for (const hit of hits) {
+      const index = resolveAnnotationIndex(hit.object, this.entries);
+      if (index >= 0) {
+        this.select(index, hit.object, hit.point);
+        return;
+      }
     }
-
-    const hitMesh = hits[0].object;
-    const match = this.meshIndex.find((item) => item.mesh === hitMesh);
-    if (match) this.select(match.index);
+    this.clear();
   }
 
-  select(index) {
-    if (this.activeIndex === index) return;
+  select(index, mesh, hitPoint) {
     this.activeIndex = index;
+    this.activeMesh = mesh;
+    this.activeHitPoint = hitPoint;
     this.root.classList.add('visible');
     this.labelEl.classList.remove('hidden');
     this.labelEl.textContent = this.entries[index].label;
@@ -162,14 +171,16 @@ export class SceneAnnotations {
 
   clear() {
     this.activeIndex = -1;
+    this.activeMesh = null;
+    this.activeHitPoint = null;
     this.root.classList.remove('visible');
     this.labelEl.classList.add('hidden');
   }
 
   updateLayout() {
-    if (this.activeIndex < 0) return;
+    if (this.activeIndex < 0 || !this.activeMesh) return;
 
-    const { mesh, entry } = this.meshIndex[this.activeIndex];
+    const entry = this.entries[this.activeIndex];
     const width = this.canvas.clientWidth;
     const height = this.canvas.clientHeight;
     if (!width || !height) return;
@@ -177,7 +188,7 @@ export class SceneAnnotations {
     this.svg.setAttribute('width', width);
     this.svg.setAttribute('height', height);
 
-    this.anchor.copy(anchorWorldPoint(mesh));
+    this.anchor.copy(anchorWorldPoint(this.activeMesh, this.activeHitPoint));
     const projected = projectPoint(this.anchor, this.camera, width, height);
     if (!projected) {
       this.root.classList.remove('visible');
@@ -220,8 +231,10 @@ export class SceneAnnotations {
   }
 
   dispose() {
-    this.canvas.removeEventListener('pointerdown', this.onPointerDown);
-    this.canvas.removeEventListener('pointerup', this.onPointerUp);
+    this.canvasWrap.removeEventListener('pointerdown', this.onPointerDown);
+    this.canvasWrap.removeEventListener('pointerup', this.onPointerUp);
+    this.controls?.removeEventListener('start', this.onControlsStart);
+    this.controls?.removeEventListener('change', this.onControlsChange);
     this.root.remove();
   }
 }
