@@ -20,7 +20,7 @@
   "lights": {
     "ambientIntensity": 0.55,
     "directionalIntensity": 1.1,
-    "directionalPosition": [-12.86, 27.58, 22.28]
+    "directionalPosition": [-25.72, 55.16, 44.56]
   },
   "towerLamp": {
     "rootName": "tower lamp",

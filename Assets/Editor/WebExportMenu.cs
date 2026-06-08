@@ -213,7 +213,7 @@ public static class WebExportMenu
         json.AppendLine("  \"lights\": {");
         json.AppendLine("    \"ambientIntensity\": 0.55,");
         json.AppendLine("    \"directionalIntensity\": 1.1,");
-        json.AppendLine("    \"directionalPosition\": [-12.86, 27.58, 22.28]");
+        json.AppendLine("    \"directionalPosition\": [-25.72, 55.16, 44.56]");
         json.AppendLine("  },");
 
         var existingTowerLamp = ReadExistingJsonBlock("towerLamp");
