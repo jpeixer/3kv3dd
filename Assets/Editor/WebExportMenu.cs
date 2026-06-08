@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using GLTFast;
 using GLTFast.Export;
 using UnityEditor;
+using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
@@ -18,6 +19,7 @@ public static class WebExportMenu
     const string DocsFolder = "docs";
     const string GlbPath = "docs/assets/scene.glb";
     const string ConfigPath = "docs/data/viewer-config.json";
+    const string SampleScenePath = "Assets/Scenes/SampleScene.unity";
     const string DefaultEmbedUrl = "https://jpeixer.github.io/3kv/";
 
     static readonly HashSet<string> SkipRootNames = new HashSet<string>
@@ -31,6 +33,31 @@ public static class WebExportMenu
     public static void ExportForWebMenu()
     {
         _ = ExportForWebAsync();
+    }
+
+    public static void RunExportSync()
+    {
+        ExportForWebAsync().GetAwaiter().GetResult();
+    }
+
+    /// <summary>Entrada para CI / terminal: Unity -batchmode -executeMethod WebExportMenu.ExportForWebBatch</summary>
+    public static void ExportForWebBatch()
+    {
+        try
+        {
+            if (!File.Exists(SampleScenePath))
+                throw new FileNotFoundException("Cena nao encontrada", SampleScenePath);
+
+            EditorSceneManager.OpenScene(SampleScenePath, OpenSceneMode.Single);
+            RunExportSync();
+            Debug.Log("[3kv3dd] Batch export concluido.");
+            EditorApplication.Exit(0);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[3kv3dd] Batch export falhou: {ex}");
+            EditorApplication.Exit(1);
+        }
     }
 
     static async Task ExportForWebAsync()
@@ -92,6 +119,11 @@ public static class WebExportMenu
     static async Task ExportGlbAsync(GameObject[] roots)
     {
         var fullPath = Path.GetFullPath(GlbPath);
+        var tempPath = fullPath + ".tmp";
+
+        if (File.Exists(tempPath))
+            File.Delete(tempPath);
+
         var exportSettings = new ExportSettings
         {
             Format = GltfFormat.Binary,
@@ -105,13 +137,30 @@ public static class WebExportMenu
             DisabledComponents = false,
         };
 
+        foreach (var root in roots)
+            Debug.Log($"[3kv3dd] Export root: {root.name}");
+
         var export = new GameObjectExport(exportSettings, goSettings);
         if (!export.AddScene(roots, "SampleScene"))
             throw new InvalidOperationException("Falha ao adicionar cena ao export GLB.");
 
-        var success = await export.SaveToFileAndDispose(fullPath);
+        var success = await export.SaveToFileAndDispose(tempPath);
         if (!success)
             throw new InvalidOperationException("SaveToFileAndDispose retornou false.");
+
+        var tempSize = new FileInfo(tempPath).Length;
+        if (tempSize < 1024)
+        {
+            if (File.Exists(tempPath)) File.Delete(tempPath);
+            throw new InvalidOperationException($"GLB invalido ({tempSize} bytes). Verifique meshes/materiais da cena.");
+        }
+
+        if (File.Exists(fullPath))
+            File.Copy(fullPath, fullPath + ".bak", true);
+
+        File.Copy(tempPath, fullPath, true);
+        File.Delete(tempPath);
+        Debug.Log($"[3kv3dd] GLB gravado: {fullPath} ({tempSize / (1024f * 1024f):F2} MB)");
     }
 
     static void WriteViewerConfig(GameObject[] roots)
@@ -151,7 +200,9 @@ public static class WebExportMenu
         json.AppendLine($"    \"embedUrl\": {JsonStr(embedUrl)},");
         json.AppendLine($"    \"title\": {JsonStr(title)},");
         json.AppendLine("    \"pixelWidth\": 1280,");
-        json.AppendLine("    \"pixelHeight\": 800");
+        json.AppendLine("    \"pixelHeight\": 800,");
+        json.AppendLine("    \"bezelPx\": 10,");
+        json.AppendLine("    \"borderRadiusPx\": 6");
         json.AppendLine("  },");
         json.AppendLine("  \"camera\": {");
         json.AppendLine("    \"fov\": 45,");
@@ -162,11 +213,57 @@ public static class WebExportMenu
         json.AppendLine("  \"lights\": {");
         json.AppendLine("    \"ambientIntensity\": 0.55,");
         json.AppendLine("    \"directionalIntensity\": 1.1,");
-        json.AppendLine("    \"directionalPosition\": [10, 20, 12]");
-        json.AppendLine("  }");
+        json.AppendLine("    \"directionalPosition\": [-6.43, 13.79, 11.14]");
+        json.AppendLine("  },");
+
+        var existingTowerLamp = ReadExistingJsonBlock("towerLamp");
+        if (!string.IsNullOrEmpty(existingTowerLamp))
+        {
+            json.AppendLine("  \"towerLamp\": {");
+            json.Append(existingTowerLamp);
+            json.AppendLine("  }");
+        }
+        else
+        {
+            json.AppendLine("  \"towerLamp\": {");
+            json.AppendLine("    \"rootName\": \"tower lamp\",");
+            json.AppendLine("    \"redNode\": \"red\",");
+            json.AppendLine("    \"greenNode\": \"green\",");
+            json.AppendLine("    \"blinkMs\": 500,");
+            json.AppendLine("    \"emissiveIntensity\": 2.5");
+            json.AppendLine("  }");
+        }
+
         json.AppendLine("}");
 
         File.WriteAllText(ConfigPath, json.ToString(), Encoding.UTF8);
+    }
+
+    static string ReadExistingJsonBlock(string key)
+    {
+        if (!File.Exists(ConfigPath)) return null;
+        var text = File.ReadAllText(ConfigPath);
+        var marker = $"\"{key}\":";
+        var start = text.IndexOf(marker, StringComparison.Ordinal);
+        if (start < 0) return null;
+        start = text.IndexOf('{', start);
+        if (start < 0) return null;
+        var depth = 0;
+        for (var i = start; i < text.Length; i++)
+        {
+            if (text[i] == '{') depth++;
+            else if (text[i] == '}')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    var inner = text.Substring(start + 1, i - start - 1).Trim();
+                    if (inner.EndsWith(",")) inner = inner[..^1];
+                    return inner + Environment.NewLine;
+                }
+            }
+        }
+        return null;
     }
 
     static string JsonStr(string value)
