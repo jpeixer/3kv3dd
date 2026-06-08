@@ -46,7 +46,8 @@ function normalizeNodeName(name) {
 }
 
 function isTowerLampRootName(name) {
-  return /tower[\s_]?lamp/i.test(name || '');
+  const n = normalizeNodeName(name);
+  return /^tower_lamp(\d+|_\(\d+\))?$/.test(n);
 }
 
 function isUnderTowerLamp(node) {
