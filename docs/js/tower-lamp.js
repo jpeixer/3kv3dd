@@ -50,29 +50,87 @@ function isTowerLampRootName(name) {
   return /^tower_lamp(\d+|_\(\d+\))?$/.test(n);
 }
 
-function isUnderTowerLamp(node) {
-  let current = node?.parent ?? null;
-  while (current) {
-    if (isTowerLampRootName(current.name)) return true;
-    current = current.parent;
-  }
-  return false;
+function nodeNamesMatch(a, b) {
+  return normalizeNodeName(a) === normalizeNodeName(b);
 }
 
-/** Collect every red/green LED mesh under any tower-lamp root (works with shared GLB meshes). */
+function findTowerLampRoots(model, config) {
+  const fromConfig = config?.towerLamp?.rootNames ?? [];
+  const roots = [];
+  const seen = new Set();
+
+  model.traverse((child) => {
+    const match = fromConfig.length
+      ? fromConfig.some((n) => nodeNamesMatch(child.name, n))
+      : isTowerLampRootName(child.name);
+    if (match && !seen.has(child)) {
+      seen.add(child);
+      roots.push(child);
+    }
+  });
+
+  return roots;
+}
+
+function findLedMeshUnderRoot(root, ledName) {
+  let found = null;
+  root.traverse((child) => {
+    if (child.isMesh && child.name === ledName) found = child;
+  });
+  return found;
+}
+
+/**
+ * GLTFLoader reuses one Mesh when several nodes share the same mesh index — only the last
+ * tower keeps red/green in the scene graph. Clone LEDs onto every tower root.
+ */
+function ensurePerTowerLedMeshes(model, config) {
+  const redName = config?.towerLamp?.redNode ?? 'red';
+  const greenName = config?.towerLamp?.greenNode ?? 'green';
+  const roots = findTowerLampRoots(model, config);
+  if (!roots.length) return { roots: [], cloned: 0 };
+
+  let redTemplate = null;
+  let greenTemplate = null;
+  model.traverse((child) => {
+    if (!child.isMesh) return;
+    if (child.name === redName && !redTemplate) redTemplate = child;
+    if (child.name === greenName && !greenTemplate) greenTemplate = child;
+  });
+  if (!redTemplate || !greenTemplate) return { roots, cloned: 0 };
+
+  let cloned = 0;
+  roots.forEach((root) => {
+    [redName, greenName].forEach((ledName) => {
+      if (findLedMeshUnderRoot(root, ledName)) return;
+      const template = ledName === redName ? redTemplate : greenTemplate;
+      const clone = template.clone();
+      clone.name = ledName;
+      clone.material = template.material;
+      root.add(clone);
+      cloned += 1;
+    });
+  });
+
+  return { roots, cloned };
+}
+
+/** Collect red/green LED mesh from each tower-lamp root. */
 function findAllTowerLedMeshes(model, config) {
+  const { roots, cloned } = ensurePerTowerLedMeshes(model, config);
   const redName = config?.towerLamp?.redNode ?? 'red';
   const greenName = config?.towerLamp?.greenNode ?? 'green';
   const reds = [];
   const greens = [];
 
-  model.traverse((child) => {
-    if (!child.isMesh || !isUnderTowerLamp(child)) return;
-    if (child.name === redName) reds.push(child);
-    if (child.name === greenName) greens.push(child);
+  roots.forEach((root) => {
+    const red = findLedMeshUnderRoot(root, redName);
+    const green = findLedMeshUnderRoot(root, greenName);
+    if (red) reds.push(red);
+    if (green) greens.push(green);
   });
 
-  return { reds, greens };
+  return { reds, greens, cloned };
 }
 
 /** One shared material per color — both towers always show the same LED state. */
@@ -96,7 +154,7 @@ export class TowerLampController {
     this.buzzer = new SafetyBuzzer();
     this.blinkTimer = 0;
 
-    const { reds, greens } = findAllTowerLedMeshes(model, config);
+    const { reds, greens, cloned } = findAllTowerLedMeshes(model, config);
     this.reds = reds;
     this.greens = greens;
     this.redMaterial = linkSharedMaterial(reds);
@@ -105,6 +163,9 @@ export class TowerLampController {
     if (!this.redMaterial || !this.greenMaterial) {
       console.warn('[tower-lamp] red/green meshes not found under tower lamp roots.');
     } else {
+      if (cloned > 0) {
+        console.info(`[tower-lamp] cloned ${cloned} LED mesh(es) for shared GLB mesh indices`);
+      }
       console.info(
         `[tower-lamp] linked ${reds.length} red + ${greens.length} green mesh(es) to shared materials`,
       );
