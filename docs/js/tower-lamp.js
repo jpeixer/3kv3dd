@@ -105,7 +105,7 @@ export class TowerLampController {
     }
 
     if (!red || !green) {
-      console.warn('[tower-lamp] Meshes red/green nao encontrados em "tower lamp".');
+      console.warn('[tower-lamp] red/green meshes not found on "tower lamp".');
     } else {
       this.setIdle();
     }

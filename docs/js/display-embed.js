@@ -51,7 +51,7 @@ export function attachDisplayEmbed({ model, config, controls }) {
   const nodeName = display.nodeName || 'Plane';
   const plane = findTabletPlane(model, nodeName);
   if (!plane) {
-    console.warn(`[display] Mesh "${nodeName}" do tablet não encontrado (≤${MAX_DISPLAY_VERTS} vértices).`);
+    console.warn(`[display] Tablet mesh "${nodeName}" not found (≤${MAX_DISPLAY_VERTS} vertices).`);
     return null;
   }
 
@@ -108,7 +108,7 @@ export function attachDisplayEmbed({ model, config, controls }) {
 
   plane.add(cssObject);
   console.info(
-    `[display] Tablet em "${plane.name}" (${plane.geometry.attributes.position.count} verts) → ${display.embedUrl}`,
+    `[display] Tablet on "${plane.name}" (${plane.geometry.attributes.position.count} verts) → ${display.embedUrl}`,
   );
   return { iframe, plane, cssObject };
 }
