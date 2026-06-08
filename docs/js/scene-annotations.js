@@ -8,6 +8,15 @@ const DEFAULT_ANNOTATIONS = [
 
 const CLICK_MAX_PX = 14;
 
+/** gltf-transform renames "Tool Cart" → "Tool_Cart", "Plane (1)" → "Plane_(1)". */
+function normalizeNodeName(name) {
+  return (name || '').replace(/ /g, '_');
+}
+
+function nodeNamesMatch(a, b) {
+  return normalizeNodeName(a) === normalizeNodeName(b);
+}
+
 function collectMeshes(root) {
   const meshes = [];
   root.traverse((child) => {
@@ -21,7 +30,7 @@ function resolveAnnotationIndex(object, entries) {
   let node = object;
   while (node) {
     for (const entry of entries) {
-      if (node.name !== entry.nodeName) continue;
+      if (!nodeNamesMatch(node.name, entry.nodeName)) continue;
       if (entry.maxVerts != null) {
         const mesh = object.isMesh ? object : (node.isMesh ? node : null);
         if (!mesh?.isMesh) continue;
@@ -49,7 +58,9 @@ function anchorWorldPoint(mesh, hitPoint = null) {
 
 function projectPoint(point, camera, width, height) {
   const p = point.clone().project(camera);
-  if (p.z < -1 || p.z > 1) return null;
+  const forward = new THREE.Vector3();
+  camera.getWorldDirection(forward);
+  if (point.clone().sub(camera.position).dot(forward) <= 0) return null;
   return {
     x: (p.x * 0.5 + 0.5) * width,
     y: (-p.y * 0.5 + 0.5) * height,
@@ -108,10 +119,8 @@ export class SceneAnnotations {
     this.onPointerDown = this.onPointerDown.bind(this);
     this.onPointerUp = this.onPointerUp.bind(this);
 
-    // Capture phase on canvas so pick runs even with OrbitControls on the same element.
     this.canvas.addEventListener('pointerdown', this.onPointerDown, true);
     this.canvas.addEventListener('pointerup', this.onPointerUp, true);
-    window.addEventListener('pointerup', this.onPointerUp, true);
 
     console.info(`[annotations] ${this.pickableMeshes.length} meshes, ${this.entries.length} labels`);
   }
@@ -131,9 +140,10 @@ export class SceneAnnotations {
 
     const dx = event.clientX - this.pointerDown.x;
     const dy = event.clientY - this.pointerDown.y;
+    const dist = Math.hypot(dx, dy);
     this.pointerDown = null;
 
-    if (Math.hypot(dx, dy) > CLICK_MAX_PX) return;
+    if (dist > CLICK_MAX_PX) return;
     this.pick(event);
   }
 
@@ -232,7 +242,6 @@ export class SceneAnnotations {
   dispose() {
     this.canvas.removeEventListener('pointerdown', this.onPointerDown, true);
     this.canvas.removeEventListener('pointerup', this.onPointerUp, true);
-    window.removeEventListener('pointerup', this.onPointerUp, true);
     this.root.remove();
   }
 }

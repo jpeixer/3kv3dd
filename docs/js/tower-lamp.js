@@ -50,6 +50,14 @@ function isolateMaterials(mesh) {
   }
 }
 
+function normalizeNodeName(name) {
+  return (name || '').replace(/ /g, '_');
+}
+
+function nodeNamesMatch(a, b) {
+  return normalizeNodeName(a) === normalizeNodeName(b);
+}
+
 function findTowerLampMeshes(model, config) {
   const rootName = config?.towerLamp?.rootName ?? 'tower lamp';
   const redName = config?.towerLamp?.redNode ?? 'red';
@@ -57,7 +65,7 @@ function findTowerLampMeshes(model, config) {
 
   let root = null;
   model.traverse((node) => {
-    if (node.name === rootName) root = node;
+    if (nodeNamesMatch(node.name, rootName)) root = node;
   });
 
   let red = null;
