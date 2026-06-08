@@ -1,6 +1,7 @@
 ﻿{
   "version": 1,
   "modelPath": "./assets/scene.glb",
+  "modelRevision": "20260608-layout-v1",
   "backgroundColor": "#0f1117",
   "display": {
     "nodeName": "Plane",
