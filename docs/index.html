@@ -40,6 +40,40 @@
       font-size: .875rem; color: #f28b82;
     }
     #error-banner.hidden { display: none; }
+    #annotation-layer {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 4;
+      opacity: 0;
+      transition: opacity 0.15s ease;
+    }
+    #annotation-layer.visible { opacity: 1; }
+    #annotation-svg {
+      position: absolute;
+      inset: 0;
+      overflow: visible;
+    }
+    #annotation-line {
+      stroke: #8ab4f8;
+      stroke-width: 2;
+      stroke-linecap: round;
+    }
+    #annotation-label {
+      position: absolute;
+      max-width: min(240px, 42vw);
+      padding: 0.55rem 0.75rem;
+      border-radius: 0.45rem;
+      background: rgba(22, 27, 34, 0.96);
+      border: 1px solid #5f6368;
+      color: #e8eaed;
+      font-size: 0.85rem;
+      font-weight: 600;
+      line-height: 1.25;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+      pointer-events: none;
+    }
+    #annotation-label.hidden { display: none; }
   </style>
   <script type="importmap">
   {
@@ -57,7 +91,7 @@
   <div class="overlay">
     <header>
       <h1>3kv3dd — Industrial Control Panel</h1>
-      <p>Drag to orbit · Scroll to zoom · Tower lamp: green = idle, flashing red + buzzer = active 3 kV test.</p>
+      <p>Drag to orbit · Scroll to zoom · Click parts for labels · Tower lamp: green = idle, flashing red + buzzer = active 3 kV test.</p>
     </header>
     <footer>Unity 6 · URP · Three.js · Display: <a href="https://jpeixer.github.io/3kv/" style="color:#8ab4f8">jpeixer.github.io/3kv</a></footer>
   </div>
@@ -76,6 +110,7 @@
       resizeCssRenderer,
     } from './js/display-embed.js';
     import { TowerLampController, listenEmbedSafety } from './js/tower-lamp.js';
+    import { SceneAnnotations } from './js/scene-annotations.js';
 
     const CONFIG_URL = './data/viewer-config.json';
     const loadingEl = document.getElementById('loading');
@@ -121,6 +156,7 @@
 
     let viewerConfig = null;
     let towerLamp = null;
+    let sceneAnnotations = null;
     let removeSafetyListener = null;
 
     function showError(msg) {
@@ -162,11 +198,13 @@
       camera.updateProjectionMatrix();
       renderer.setSize(w, h, false);
       resizeCssRenderer(cssRenderer, w, h);
+      sceneAnnotations?.updateLayout?.();
     }
 
     function animate() {
       requestAnimationFrame(animate);
       controls.update();
+      sceneAnnotations?.update();
       renderer.render(scene, camera);
       renderCssScene(cssRenderer, scene, camera);
     }
@@ -194,6 +232,12 @@
         fitCamera(model);
         attachDisplayEmbed({ model, config: viewerConfig, controls });
         towerLamp = new TowerLampController(model, viewerConfig);
+        sceneAnnotations = new SceneAnnotations({
+          model,
+          camera,
+          canvas,
+          config: viewerConfig,
+        });
         removeSafetyListener = listenEmbedSafety((operational) => {
           towerLamp.setOperational(operational);
         });
@@ -210,6 +254,7 @@
     window.addEventListener('beforeunload', () => {
       removeSafetyListener?.();
       towerLamp?.dispose();
+      sceneAnnotations?.dispose();
     });
 
     init();

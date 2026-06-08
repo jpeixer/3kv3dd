@@ -221,7 +221,7 @@ public static class WebExportMenu
         {
             json.AppendLine("  \"towerLamp\": {");
             json.Append(existingTowerLamp);
-            json.AppendLine("  }");
+            json.AppendLine("  },");
         }
         else
         {
@@ -231,7 +231,15 @@ public static class WebExportMenu
             json.AppendLine("    \"greenNode\": \"green\",");
             json.AppendLine("    \"blinkMs\": 500,");
             json.AppendLine("    \"emissiveIntensity\": 2.5");
-            json.AppendLine("  }");
+            json.AppendLine("  },");
+        }
+
+        var existingAnnotations = ReadExistingJsonArray("annotations");
+        if (!string.IsNullOrEmpty(existingAnnotations))
+        {
+            json.AppendLine("  \"annotations\": [");
+            json.Append(existingAnnotations);
+            json.AppendLine("  ]");
         }
 
         json.AppendLine("}");
@@ -253,6 +261,33 @@ public static class WebExportMenu
         {
             if (text[i] == '{') depth++;
             else if (text[i] == '}')
+            {
+                depth--;
+                if (depth == 0)
+                {
+                    var inner = text.Substring(start + 1, i - start - 1).Trim();
+                    if (inner.EndsWith(",")) inner = inner[..^1];
+                    return inner + Environment.NewLine;
+                }
+            }
+        }
+        return null;
+    }
+
+    static string ReadExistingJsonArray(string key)
+    {
+        if (!File.Exists(ConfigPath)) return null;
+        var text = File.ReadAllText(ConfigPath);
+        var marker = $"\"{key}\":";
+        var start = text.IndexOf(marker, StringComparison.Ordinal);
+        if (start < 0) return null;
+        start = text.IndexOf('[', start);
+        if (start < 0) return null;
+        var depth = 0;
+        for (var i = start; i < text.Length; i++)
+        {
+            if (text[i] == '[') depth++;
+            else if (text[i] == ']')
             {
                 depth--;
                 if (depth == 0)

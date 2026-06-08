@@ -7,7 +7,7 @@ Projeto Unity 6 (URP) com cena industrial montada no editor — painel de contro
 A visualização web interativa está em [`docs/`](docs/):
 
 - **URL:** https://jpeixer.github.io/3kv3dd/
-- Viewer UI in **English** (drag to orbit, scroll to zoom, right-click to pan).
+- Viewer UI in **English**; click parts for labels (HIPOT, Tool Cart, Screen 13").
 - O **Plane** da cena exibe o portal [3kv](https://jpeixer.github.io/3kv/) embarcado como tela interativa no viewer web.
 - **Torre sinalizadora** (`tower lamp`): **verde** aceso quando o ensaio está parado; **vermelho** piscando + **buzina** (0,5 s / 0,5 s) durante o ensaio em `/test` (high voltage).
 
