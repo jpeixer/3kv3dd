@@ -7,6 +7,8 @@ const DEFAULT_ANNOTATIONS = [
   { nodeName: 'tower lamp', label: 'Towerlamp + Horn', labelOffset: [-130, -76] },
   { nodeName: 'BACK_CHASSIS', label: 'PLC, Database integration SIVAS, CSV, etc. 12 Channels with 10kV relay', labelOffset: [110, -88] },
   { nodeName: 'GraphicT', label: '11" Tablet', labelOffset: [95, -68] },
+  { nodeName: 'control panel', label: 'Key switch Enable selection, E-stop, Local/Remote Control', labelOffset: [-120, -82] },
+  { nodeName: 'posteseg', label: '3X Barrier Safety post with stop button and tower lamp', labelOffset: [105, -78] },
 ];
 
 const CLICK_MAX_PX = 14;
