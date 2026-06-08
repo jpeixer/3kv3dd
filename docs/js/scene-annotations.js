@@ -6,6 +6,8 @@ const DEFAULT_ANNOTATIONS = [
   { nodeName: 'Plane', label: 'Screen 13"', maxVerts: 5000, labelOffset: [90, -64] },
 ];
 
+const CLICK_MAX_PX = 14;
+
 function collectMeshes(root) {
   const meshes = [];
   root.traverse((child) => {
@@ -14,30 +16,21 @@ function collectMeshes(root) {
   return meshes;
 }
 
-/** Walk up from hit object; longest / most specific nodeName match wins. */
+/** Closest ancestor name match (hit object → parents). */
 function resolveAnnotationIndex(object, entries) {
-  const chain = [];
   let node = object;
   while (node) {
-    chain.push(node);
-    node = node.parent;
-  }
-
-  for (const entry of entries) {
-    const onChain = chain.some((n) => n.name === entry.nodeName);
-    if (!onChain) continue;
-
-    if (entry.maxVerts != null) {
-      let mesh = object.isMesh ? object : null;
-      if (!mesh) {
-        mesh = chain.find((n) => n.isMesh && n.name === entry.nodeName);
+    for (const entry of entries) {
+      if (node.name !== entry.nodeName) continue;
+      if (entry.maxVerts != null) {
+        const mesh = object.isMesh ? object : (node.isMesh ? node : null);
+        if (!mesh?.isMesh) continue;
+        const verts = mesh.geometry?.attributes?.position?.count ?? Infinity;
+        if (verts > entry.maxVerts) continue;
       }
-      if (!mesh?.isMesh) continue;
-      const verts = mesh.geometry?.attributes?.position?.count ?? Infinity;
-      if (verts > entry.maxVerts) continue;
+      return entries.indexOf(entry);
     }
-
-    return entries.indexOf(entry);
+    node = node.parent;
   }
   return -1;
 }
@@ -85,12 +78,11 @@ function labelAnchorPoint(labelX, labelY, labelW, labelH, targetX, targetY) {
 }
 
 export class SceneAnnotations {
-  constructor({ model, camera, canvas, canvasWrap, controls, config }) {
+  constructor({ model, camera, canvas, canvasWrap, config }) {
     this.model = model;
     this.camera = camera;
     this.canvas = canvas;
     this.canvasWrap = canvasWrap || canvas.parentElement;
-    this.controls = controls;
     this.entries = config?.annotations?.length ? config.annotations : DEFAULT_ANNOTATIONS;
     this.pickableMeshes = collectMeshes(model);
     this.activeIndex = -1;
@@ -99,8 +91,7 @@ export class SceneAnnotations {
     this.anchor = new THREE.Vector3();
     this.raycaster = new THREE.Raycaster();
     this.pointer = new THREE.Vector2();
-    this.dragStart = null;
-    this.orbitMoved = false;
+    this.pointerDown = null;
 
     this.root = document.createElement('div');
     this.root.id = 'annotation-layer';
@@ -116,36 +107,44 @@ export class SceneAnnotations {
 
     this.onPointerDown = this.onPointerDown.bind(this);
     this.onPointerUp = this.onPointerUp.bind(this);
-    this.onControlsStart = () => { this.orbitMoved = false; };
-    this.onControlsChange = () => { this.orbitMoved = true; };
 
-    this.canvasWrap.addEventListener('pointerdown', this.onPointerDown);
-    this.canvasWrap.addEventListener('pointerup', this.onPointerUp);
-    controls?.addEventListener('start', this.onControlsStart);
-    controls?.addEventListener('change', this.onControlsChange);
+    // Capture phase on canvas so pick runs even with OrbitControls on the same element.
+    this.canvas.addEventListener('pointerdown', this.onPointerDown, true);
+    this.canvas.addEventListener('pointerup', this.onPointerUp, true);
+    window.addEventListener('pointerup', this.onPointerUp, true);
 
     console.info(`[annotations] ${this.pickableMeshes.length} meshes, ${this.entries.length} labels`);
   }
 
   onPointerDown(event) {
     if (event.button !== 0) return;
-    this.dragStart = { x: event.clientX, y: event.clientY };
-    this.orbitMoved = false;
+    this.pointerDown = {
+      x: event.clientX,
+      y: event.clientY,
+      id: event.pointerId,
+    };
   }
 
   onPointerUp(event) {
-    if (event.button !== 0 || !this.dragStart) return;
-    const dx = event.clientX - this.dragStart.x;
-    const dy = event.clientY - this.dragStart.y;
-    this.dragStart = null;
-    if (this.orbitMoved || Math.hypot(dx, dy) > 10) return;
+    if (event.button !== 0 || !this.pointerDown) return;
+    if (event.pointerId !== this.pointerDown.id) return;
+
+    const dx = event.clientX - this.pointerDown.x;
+    const dy = event.clientY - this.pointerDown.y;
+    this.pointerDown = null;
+
+    if (Math.hypot(dx, dy) > CLICK_MAX_PX) return;
     this.pick(event);
   }
 
   pick(event) {
     const rect = this.canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return;
+
     this.pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
     this.pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+    this.model.updateMatrixWorld(true);
     this.raycaster.setFromCamera(this.pointer, this.camera);
 
     const hits = this.raycaster.intersectObjects(this.pickableMeshes, false);
@@ -231,10 +230,9 @@ export class SceneAnnotations {
   }
 
   dispose() {
-    this.canvasWrap.removeEventListener('pointerdown', this.onPointerDown);
-    this.canvasWrap.removeEventListener('pointerup', this.onPointerUp);
-    this.controls?.removeEventListener('start', this.onControlsStart);
-    this.controls?.removeEventListener('change', this.onControlsChange);
+    this.canvas.removeEventListener('pointerdown', this.onPointerDown, true);
+    this.canvas.removeEventListener('pointerup', this.onPointerUp, true);
+    window.removeEventListener('pointerup', this.onPointerUp, true);
     this.root.remove();
   }
 }
