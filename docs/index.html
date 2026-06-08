@@ -110,6 +110,7 @@
       resizeCssRenderer,
     } from './js/display-embed.js';
     import { TowerLampController, listenEmbedSafety } from './js/tower-lamp.js';
+    import { applyMaterialOverrides } from './js/material-overrides.js';
     import { SceneAnnotations } from './js/scene-annotations.js';
 
     const CONFIG_URL = './data/viewer-config.json';
@@ -253,6 +254,7 @@
           }
         });
         fixInvertedMeshes(model);
+        applyMaterialOverrides(model, viewerConfig);
         scene.add(model);
         fitCamera(model);
         attachDisplayEmbed({ model, config: viewerConfig, controls });

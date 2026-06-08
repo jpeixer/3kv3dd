@@ -41,7 +41,7 @@ function applyLampGlow(mesh, on, hexColor, intensity = LAMP_EMISSIVE_INTENSITY) 
   });
 }
 
-function isolateMaterials(mesh) {
+function ensureUniqueMaterials(mesh) {
   if (!mesh?.isMesh) return;
   if (Array.isArray(mesh.material)) {
     mesh.material = mesh.material.map((m) => (m ? m.clone() : m));
@@ -58,49 +58,72 @@ function nodeNamesMatch(a, b) {
   return normalizeNodeName(a) === normalizeNodeName(b);
 }
 
-function findTowerLampRoots(model, config) {
-  const rootNames = config?.towerLamp?.rootNames
-    ?? (config?.towerLamp?.rootName ? [config.towerLamp.rootName] : ['tower lamp']);
-  const extraRoots = config?.towerLamp?.extraRootNames ?? [];
-  const allRootNames = [...rootNames, ...extraRoots];
-
-  const roots = [];
-  model.traverse((node) => {
-    if (allRootNames.some((name) => nodeNamesMatch(node.name, name))) roots.push(node);
-  });
-  return roots;
+function isTowerLampRootName(name) {
+  return /tower[\s_]?lamp/i.test(name || '');
 }
 
 function findLedsInRoot(root, redName, greenName) {
-  let red = null;
-  let green = null;
+  const reds = [];
+  const greens = [];
   root.traverse((child) => {
     if (!child.isMesh) return;
-    if (child.name === redName) red = child;
-    if (child.name === greenName) green = child;
+    if (child.name === redName) reds.push(child);
+    if (child.name === greenName) greens.push(child);
   });
-  return { red, green };
+  return { reds, greens };
 }
 
-function findAllTowerLamps(model, config) {
+function findTowerLampRoots(model, config) {
+  const configured = [
+    ...(config?.towerLamp?.rootNames ?? []),
+    ...(config?.towerLamp?.rootName ? [config.towerLamp.rootName] : []),
+    ...(config?.towerLamp?.extraRootNames ?? []),
+  ];
+  const uniqueConfigured = [...new Set(configured.map(normalizeNodeName))];
+
+  const roots = [];
+  model.traverse((node) => {
+    if (uniqueConfigured.some((name) => nodeNamesMatch(node.name, name))) roots.push(node);
+  });
+
+  if (roots.length) return roots;
+
+  model.traverse((node) => {
+    if (!isTowerLampRootName(node.name)) return;
+    const { reds, greens } = findLedsInRoot(
+      node,
+      config?.towerLamp?.redNode ?? 'red',
+      config?.towerLamp?.greenNode ?? 'green',
+    );
+    if (reds.length && greens.length) roots.push(node);
+  });
+
+  return roots;
+}
+
+function findAllTowerLedMeshes(model, config) {
   const redName = config?.towerLamp?.redNode ?? 'red';
   const greenName = config?.towerLamp?.greenNode ?? 'green';
   const roots = findTowerLampRoots(model, config);
+  const reds = [];
+  const greens = [];
 
-  const lamps = roots.map((root) => findLedsInRoot(root, redName, greenName));
+  const collect = (root) => {
+    const found = findLedsInRoot(root, redName, greenName);
+    reds.push(...found.reds);
+    greens.push(...found.greens);
+  };
 
-  if (!lamps.length) {
-    let red = null;
-    let green = null;
+  if (roots.length) roots.forEach(collect);
+  else {
     model.traverse((child) => {
       if (!child.isMesh) return;
-      if (child.name === redName) red = child;
-      if (child.name === greenName) green = child;
+      if (child.name === redName) reds.push(child);
+      if (child.name === greenName) greens.push(child);
     });
-    if (red || green) lamps.push({ red, green });
   }
 
-  return lamps;
+  return { reds, greens, roots };
 }
 
 export class TowerLampController {
@@ -112,23 +135,22 @@ export class TowerLampController {
     this.buzzer = new SafetyBuzzer();
     this.rafId = 0;
 
-    this.lamps = findAllTowerLamps(model, config);
-    this.lamps.forEach(({ red, green }) => {
-      if (red) {
-        isolateMaterials(red);
-        (Array.isArray(red.material) ? red.material : [red.material]).forEach(prepareLedMaterial);
-      }
-      if (green) {
-        isolateMaterials(green);
-        (Array.isArray(green.material) ? green.material : [green.material]).forEach(prepareLedMaterial);
-      }
+    const { reds, greens, roots } = findAllTowerLedMeshes(model, config);
+    this.reds = reds;
+    this.greens = greens;
+
+    [...reds, ...greens].forEach((mesh) => {
+      ensureUniqueMaterials(mesh);
+      const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+      mats.forEach(prepareLedMaterial);
     });
 
-    const ready = this.lamps.filter(({ red, green }) => red && green);
-    if (!ready.length) {
+    if (!reds.length || !greens.length) {
       console.warn('[tower-lamp] red/green meshes not found on configured tower lamp roots.');
     } else {
-      console.info(`[tower-lamp] ${ready.length} tower(s) synced`);
+      console.info(
+        `[tower-lamp] ${roots.length || 'auto'} root(s), ${reds.length} red + ${greens.length} green LED mesh(es) synced`,
+      );
       this.setIdle();
     }
   }
@@ -151,17 +173,13 @@ export class TowerLampController {
   }
 
   setIdle() {
-    this.lamps.forEach(({ red, green }) => {
-      applyLampGlow(red, false, LAMP_COLORS.red, this.lampIntensity);
-      applyLampGlow(green, true, LAMP_COLORS.green, this.lampIntensity);
-    });
+    this.reds.forEach((mesh) => applyLampGlow(mesh, false, LAMP_COLORS.red, this.lampIntensity));
+    this.greens.forEach((mesh) => applyLampGlow(mesh, true, LAMP_COLORS.green, this.lampIntensity));
   }
 
   setEnergizedPhase(on) {
-    this.lamps.forEach(({ red, green }) => {
-      applyLampGlow(red, on, LAMP_COLORS.red, this.lampIntensity);
-      applyLampGlow(green, false, LAMP_COLORS.green, this.lampIntensity);
-    });
+    this.reds.forEach((mesh) => applyLampGlow(mesh, on, LAMP_COLORS.red, this.lampIntensity));
+    this.greens.forEach((mesh) => applyLampGlow(mesh, false, LAMP_COLORS.green, this.lampIntensity));
   }
 
   startBlinkLoop() {
